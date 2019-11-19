@@ -1,2 +1,2 @@
 # ShanerBot
-The backend of the best Discord bot
+The backend of the best soon to be Discord bot
