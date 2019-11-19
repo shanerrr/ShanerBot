@@ -6,6 +6,9 @@ import os
 from os import system
 import shutil
 import datetime
+import sqlite3
+
+
 
 class Music(commands.Cog):
 
@@ -13,8 +16,36 @@ class Music(commands.Cog):
         self.client = client
         self.queues = []
 
-    #@client.command(pass_context=True)
-    #@commands.Cog.listener()
+        DIR = os.path.dirname(__file__)
+        self.db = sqlite3.connect(
+            os.path.join(DIR, "ServerID.db"))  # connecting to DB if this file is not there it will create it
+        self.SQL = self.db.cursor()
+
+    def database(self, ctx):
+        self.SQL.execute('create table if not exists Music('
+                    '"Num" integer not null primary key autoincrement, '
+                    '"Server_ID" integer, '
+                    '"Server_Name" text, '
+                    '"Voice_ID" integer, '
+                    '"Voice_Name" text, '
+                    '"User_Name" text, '
+                    '"Next_Queue" integer, '
+                    '"Queue_Name" text, '
+                    '"Song_Name" text'
+                    ')')
+        server_name = str(ctx.guild)
+        print(server_name)
+        server_id = ctx.guild.id
+        user_name = str(ctx.message.author)
+        queue_name = f"Queue#{server_id}"
+        song_name = f"Song#{server_id}"
+        channel_id = ctx.message.author.voice.channel.id
+        channel_name = str(ctx.message.author.voice.channel)
+        queue_num = 1
+        self.SQL.execute(
+            'insert into Music(Server_ID, Server_Name, Voice_ID, Voice_Name, User_Name, Next_Queue, Queue_Name, Song_Name) values(?,?,?,?,?,?,?,?)',
+            (server_id, server_name, channel_id, channel_name, user_name, queue_num, queue_name, song_name))
+        self.db.commit()
 
     @commands.command(pass_context=True)
     async def join(self, ctx):
@@ -254,13 +285,11 @@ class Music(commands.Cog):
                 await ctx.send("**Searching Youtube:** ``"+song_search+"``")
 
             async with ctx.typing():
-                #song_search = " ".join(url)
-                #await ctx.send("**Searching Youtube: **``" + song_search + "``")
                 with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                     try:
                         print(song_search)
                         ydl.download([f"ytsearch1:{song_search}"])
-                        #system(f"youtube-dl ytsearch5:{song_search} --no-playlist --write-info-json --skip-download")
+                        #system(f"youtube-dl ytsearch1:{song_search} --no-playlist --write-info-json --skip-download")
 
                     except:
                         await ctx.send("``Weird Issue, please try again.``")
