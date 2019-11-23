@@ -6,6 +6,7 @@ import os
 from os import system
 import shutil
 import datetime
+import sqlite3
 
 
 
@@ -14,6 +15,42 @@ class Music(commands.Cog):
     def __init__(self, client):
         self.client = client
         self.queues = []
+        DIR = os.path.dirname(__file__)
+        self.db = sqlite3.connect(
+            os.path.join(DIR, "ServerID.db"))  # connecting to DB if this file is not there it will create it
+        self.SQL = self.db.cursor()
+
+    def database(self, ctx):
+        self.SQL.execute('create table if not exists Music('
+                    '"Num" integer not null primary key autoincrement, '
+                    '"Server_ID" integer, '
+                    '"Server_Name" text, '
+                    '"Voice_ID" integer, '
+                    '"Voice_Name" text, '
+                    '"User_Name" text, '
+                    '"Next_Queue" integer, '
+                    '"Queue_Name" text, '
+                    '"Song_Name" text'
+                    ')')
+
+        server_id = ctx.guild.id
+        self.SQL.execute("select Server_ID from Music where Server_ID =?", (server_id,))
+        server_idt = self.SQL.fetchone()
+
+        if server_id == server_idt:
+            return
+
+        server_name = str(ctx.guild)
+        user_name = str(ctx.message.author)
+        queue_name = f"Queue#{server_id}"
+        song_name = f"Song#{server_id}"
+        channel_id = ctx.message.author.voice.channel.id
+        channel_name = str(ctx.message.author.voice.channel)
+        queue_num = 1
+        self.SQL.execute(
+            'insert into Music(Server_ID, Server_Name, Voice_ID, Voice_Name, User_Name, Next_Queue, Queue_Name, Song_Name) values(?,?,?,?,?,?,?,?)',
+            (server_id, server_name, channel_id, channel_name, user_name, queue_num, queue_name, song_name))
+        self.db.commit()
 
     @commands.command(pass_context=True)
     async def join(self, ctx):
@@ -36,6 +73,14 @@ class Music(commands.Cog):
 
     @commands.command(pass_context=True)
     async def leave(self, ctx):
+
+        server_name = str(ctx.guild)
+        server_id = ctx.guild.id
+        channel_id = ctx.message.author.voice.channel.id
+        channel_name = str(ctx.message.author.voice.channel)
+        self.SQL.execute(
+            f'delete from music where Server_ID ="{server_id}" and Server_Name = "{server_name}" and Voice_ID="{channel_id}" and Voice_Name="{channel_name}"')
+        self.db.commit()
 
         voice = get(self.client.voice_clients, guild=ctx.guild)
 
@@ -78,7 +123,7 @@ class Music(commands.Cog):
         else:
             await ctx.send("`no song to stop. if only i can stop you from being an idot`")
 
-    @commands.command(pass_context=True, aliases = ['p', 'search'])
+    @commands.command(pass_context=True, aliases=['p', 'search'])
     async def play(self, ctx, *url: str):
 
         if len(url) < 1:
@@ -102,6 +147,11 @@ class Music(commands.Cog):
         except AttributeError:
             await ctx.send("``man where am i going to play it huh? join channel first idot.``")
             return
+
+        server_name = str(ctx.guild)
+        server_id = ctx.guild.id
+        channel_id = ctx.message.author.voice.channel.id
+        channel_name = str(ctx.message.author.voice.channel)
 
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice.is_playing() or voice.is_paused():
@@ -302,7 +352,7 @@ class Music(commands.Cog):
         else:
             pos = 1
             length = len(self.queues)-1
-            embed = discord.Embed(title="**__Now Playing:__ "+(self.queues[length].split("`|`"))[0]+"**",
+            embed = discord.Embed(title="**Now Playing: "+(self.queues[length].split("`|`"))[0]+"**",
                                   description="\n\n**Currently In Queue:**", url=(self.queues[length].split("`|`"))[2],
                                   colour=discord.Color.purple())
             embed.set_thumbnail(url=(self.queues[length].split("`|`"))[3])

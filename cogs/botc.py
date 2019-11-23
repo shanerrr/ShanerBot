@@ -20,7 +20,6 @@ class Bot(commands.Cog):
         else:
             ctx.send("``nty, i don't like you.``")
 
-
     @commands.command(pass_context=True)
     async def changestatus(self, ctx, status: int):
         if str(ctx.author.id) == "168603442175148032":
@@ -32,15 +31,10 @@ class Bot(commands.Cog):
                 await self.client.change_presence(status=discord.Status.do_not_disturb, activity=discord.Game("ur pls invite me"))
             elif status == 3: #idle
                 await self.client.change_presence(status=discord.Status.idle, activity=discord.Game("ur pls invite me"))
-
-
-
+            else:
+                await ctx.send("``Invalid Status Code``")
         else:
             ctx.send("``nty, i don't like you.``")
-
-
-
-
 
 
 def setup(client):
