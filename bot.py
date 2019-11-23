@@ -20,4 +20,4 @@ async def on_ready():
     await client.change_presence(status=discord.Status.online, activity=discord.Game("ur pls invite me"))
     print('client ready')
 
-client.run("NjQ1MTI0MTMzMTI2MTQ0MDIw.XdNE2g.NtphJDC2qVPcA3ouD0IEpERPQ3Y")
+client.run(TOKEN)

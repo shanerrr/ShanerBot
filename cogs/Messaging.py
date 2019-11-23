@@ -35,7 +35,7 @@ class Messaging(commands.Cog):
                 print(str(message.author.id))
                 await message.channel.send(f"ok hey, **{mesgaut[0]}**")
 
-        await self.client.process_commands(message)
+        #await self.client.process_commands(message)
 
 
 def setup(client):
