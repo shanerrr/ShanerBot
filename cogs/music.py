@@ -3,12 +3,11 @@ from discord.ext import commands
 from discord.utils import get
 import youtube_dl
 import datetime
-import os
-import sqlite3
 from apiclient.discovery import build
 import asyncio
 import html
 from async_timeout import timeout
+from collections import defaultdict
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -40,6 +39,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.uploader = data.get('uploader')
         self.duration = data.get('duration')
         self.id = data.get('id')
+
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
@@ -57,46 +57,12 @@ class Music(commands.Cog):
     def __init__(self, client):
         self.client = client
         self.ytapi = "API"
-        self.repeatO = False
-        self.repeatAll = False
-        self.repeatAllNum = 0
-        self.restart = False
+        # self.repeatO = False
+        # self.repeatAll = False
+        # self.repeatAllNum = 0
+        # self.restart = False
         self.youtube = build('youtube', 'v3', developerKey=self.ytapi)
-        self.players = []
-        # self.db = sqlite3.connect(os.path.join(os.path.dirname(__file__), "ServerID.db"))  # connecting to DB if this file is not there it will create it
-        # self.SQL = self.db.cursor()
-
-    def database(self, ctx):
-        self.SQL.execute('create table if not exists Music('
-                    '"Num" integer not null primary key autoincrement, '
-                    '"Server_ID" integer, '
-                    '"Server_Name" text, '
-                    '"Voice_ID" integer, '
-                    '"Voice_Name" text, '
-                    '"User_Name" text, '
-                    '"Next_Queue" integer, '
-                    '"Queue_Name" text, '
-                    '"Song_Name" text'
-                    ')')
-
-        server_id = ctx.guild.id
-        self.SQL.execute("select Server_ID from Music where Server_ID =?", (server_id,))
-        server_idt = self.SQL.fetchone()
-
-        if server_id == server_idt:
-            return
-
-        server_name = str(ctx.guild)
-        user_name = str(ctx.message.author)
-        queue_name = f"Queue#{server_id}"
-        song_name = f"Song#{server_id}"
-        channel_id = ctx.message.author.voice.channel.id
-        channel_name = str(ctx.message.author.voice.channel)
-        queue_num = 1
-        self.SQL.execute(
-            'insert into Music(Server_ID, Server_Name, Voice_ID, Voice_Name, User_Name, Next_Queue, Queue_Name, Song_Name) values(?,?,?,?,?,?,?,?)',
-            (server_id, server_name, channel_id, channel_name, user_name, queue_num, queue_name, song_name))
-        self.db.commit()
+        self.players = defaultdict(list)
 
     @commands.command(pass_context=True)
     async def join(self, ctx):
@@ -123,21 +89,13 @@ class Music(commands.Cog):
     async def leave(self, ctx):
         """- ShanerBot will kindly leave the voice channel it is currently in. """
 
-        # server_name = str(ctx.guild)
-        # server_id = ctx.guild.id
-        # channel_id = ctx.message.author.voice.channel.id
-        # channel_name = str(ctx.message.author.voice.channel)
-        # self.SQL.execute(
-        #     f'delete from music where Server_ID ="{server_id}" and Server_Name = "{server_name}" and Voice_ID="{channel_id}" and Voice_Name="{channel_name}"')
-        # self.db.commit()
-
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice and voice.is_connected():
+            self.players[ctx.guild.id].clear()
             await voice.disconnect()
             await ctx.send(f"`ok, i left: {voice.channel}.`")
         else:
             await ctx.send("`man ur know im not connected to a channel, idot.`")
-
 
     @commands.command(pass_context=True)
     async def pause(self, ctx):
@@ -167,7 +125,7 @@ class Music(commands.Cog):
 
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice and voice.is_playing():
-            self.players.clear()
+            self.players[ctx.guild.id].clear()
             voice.stop()
             await ctx.send("`ok i stopped ur songs`")
         else:
@@ -181,22 +139,20 @@ class Music(commands.Cog):
             await ctx.send("``play what song man? enter youtube url or search.``")
             return
 
-        for emotion in url:
-            if "SAD" == emotion.upper():
-                await ctx.send("``hey man ur good? dont worry man im here for ur.``")
-            if "HAPPY" == emotion.upper():
-                await ctx.send("``omg ur happy? me 2 man.``")
+        voice = get(self.client.voice_clients, guild=ctx.guild)
+        if voice is None:
+            return
 
-        # server_name = str(ctx.guild)
-        # server_id = ctx.guild.id
-        # channel_id = ctx.message.author.voice.channel.id
-        # channel_name = str(ctx.message.author.voice.channel)
+        for emotion in url:
+            if "SAD" in emotion.upper():
+                await ctx.send("``hey man ur good? don't worry man im here for ur.``")
+            if "HAPPY" in emotion.upper():
+                await ctx.send("``omg ur happy? me 2 man.``")
 
         searchlist = []
         urllist = []
 
-        voice = get(self.client.voice_clients, guild=ctx.guild)
-        if voice.is_playing() or voice.is_paused(): #adding to queue using one search
+        if self.players[ctx.guild.id]: #voice.is_playing() or voice.is_paused(): #adding to queue using one search
 
             if "&t=" in url[0] or "&list=" in url[0]:
                 await ctx.send("**``🔎YouTube: "+url[0]+"``**")
@@ -220,31 +176,32 @@ class Music(commands.Cog):
                     return
 
             async with ctx.typing():
-                self.players.insert(0, player)
+                self.players[ctx.guild.id].insert(0, player)
                 embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
                 embed.set_author(name=str(ctx.author.name) + ": Adding a song",
                                  icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
                 embed.set_thumbnail(url=player.imageurl)
                 embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
-                embed.add_field(name="Position in queue", value=str(len(self.players) - 1))
+                embed.add_field(name="Position in queue", value=str(len(self.players[ctx.guild.id]) - 1))
                 embed.add_field(name="Uploader", value=player.uploader)
                 await ctx.send(embed=embed)
 
-        elif (voice.is_playing() is False) and (voice.is_paused() is False): #no song in queue
+        elif not self.players[ctx.guild.id]:#(voice.is_playing() is False) and (voice.is_paused() is False): #no song in queue
 
             def check_queue():
-                if self.players:
+                if self.players[ctx.guild.id]:
                     voice = get(self.client.voice_clients, guild=ctx.guild)
                     if self.repeatO:
-                        voice.play(self.players[-1], after=lambda e: check_queue())
+                        voice.play(self.players[ctx.guild.id][-1], after=lambda e: check_queue())
                     elif self.repeatAll:
                         voice.source = discord.PCMVolumeTransformer(voice.source)
                         voice.source.volume = 0.25
-                    self.players.pop()
-                    player = self.players[-1]
-                    voice.play(player, after=lambda e: check_queue())
+                    else:
+                        self.players[ctx.guild.id].pop()
+                        player = self.players[ctx.guild.id][-1]
+                        voice.play(player, after=lambda e: check_queue())
                 else:
-                    self.players.clear()
+                    self.players[ctx.guild.id].clear()
 
             if "&t=" in url[0] or "&list=" in url[0]:
                 await ctx.send("**``🔎YouTube: "+url[0]+"``**")
@@ -269,7 +226,7 @@ class Music(commands.Cog):
                     return
 
             async with ctx.typing():
-                self.players.insert(0, player)
+                self.players[ctx.guild.id].insert(0, player)
                 embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
                                       url=f"https://www.youtube.com/watch?v={player.id}")
                 embed.set_author(name=str(ctx.author.name) + ": Now Playing",
@@ -296,7 +253,7 @@ class Music(commands.Cog):
                 voice.stop() #stops song and starts next song if there is any song queued
             else:
                 async with ctx.typing():
-                    songskip = (self.players[-1])
+                    songskip = (self.players[ctx.guild.id][-1])
                     embed = discord.Embed(title="**" + songskip.title + "**", colour=discord.Color.dark_magenta(),
                                           url=f"https://www.youtube.com/watch?v={songskip.id}")
                     embed.set_author(name=str(ctx.author.name) + ": Skipped a song",
@@ -327,61 +284,62 @@ class Music(commands.Cog):
     async def queue(self, ctx):
         """- ShanerBot returns all the songs in queue. """
 
-        if len(self.players) == 0:
+        print(self.players[ctx.guild.id])
+        if len(self.players[ctx.guild.id]) == 0:
             await ctx.send("`bruh, nothing in queue.`")
             return
-        if len(self.players) == 1:
-            embed = discord.Embed(title="**"+(self.players[-1]).title+"**", description="**Playing Now**",
-                                  url=f"https://www.youtube.com/watch?v={(self.players[-1]).id}",
+        if len(self.players[ctx.guild.id]) == 1:
+            embed = discord.Embed(title="**"+(self.players[ctx.guild.id][-1]).title+"**", description="**Playing Now**",
+                                  url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][-1]).id}",
                                   colour=discord.Color.dark_magenta())
-            embed.set_thumbnail(url=(self.players[-1]).imageurl)
+            embed.set_thumbnail(url=(self.players[ctx.guild.id][-1]).imageurl)
             embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
             await ctx.send(embed=embed)
         else:
             pos = 1
-            length = len(self.players)-1
-            embed = discord.Embed(title="**"+(self.players[length]).title+"**", url=f"https://www.youtube.com/watch?v={(self.players[length]).id}", description="**Playing Now**",
+            length = len(self.players[ctx.guild.id])-1
+            embed = discord.Embed(title="**"+(self.players[ctx.guild.id][length]).title+"**", url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][length]).id}", description="**Playing Now**",
                                   colour=discord.Color.dark_magenta())
-            embed.set_thumbnail(url=(self.players[length]).imageurl)
+            embed.set_thumbnail(url=(self.players[ctx.guild.id][length]).imageurl)
             embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
             embed.add_field(name="-------------------------------------------------------------------------", value="**Currently In Queue:**")
             for num in range(length):
-                item = self.players[(length-1)-num]
+                item = self.players[ctx.guild.id][(length-1)-num]
                 embed.add_field(name="**["+str(pos)+"] "+item.title+"**", value="https://www.youtube.com/watch?v=" +
                                                                                 item.id, inline=False)
                 pos += 1
             await ctx.send(embed=embed)
 
-    @commands.command(pass_context=True, aliases=['r'])
-    async def repeat(self, ctx, *repeat: str):
-        """- ShanerBot can repeat one song, or all songs in current queue."""
-        try:
-            if "one".upper() in (x.upper() for x in repeat):
-                if len(self.players) == 0:
-                    await ctx.send("``No songs queued idot.``")
-                    return
-                self.repeatO = True
-                length = len(self.players) - 1
-                embed = discord.Embed(title="**"+self.players[length].title+"**", description=f"**Repeating ({str(datetime.timedelta(seconds=round(self.players[length].duration)))})**",
-                                      url=f"https://www.youtube.com/watch?v={self.players[length].id}",
-                                      colour=discord.Color.dark_magenta())
-                embed.set_thumbnail(url=self.players[length].imageurl)
-                await ctx.send(embed=embed)
-            elif "all".upper() in (x.upper() for x in repeat):
-                if len(self.players) == 0:
-                    await ctx.send("``No songs queued idot.``")
-                    return
-                self.repeatAll = True
-                self.repeatAllNum = len(self.queues)-1 #still have to work on
-            elif "off".upper() in (x.upper() for x in repeat) and (self.repeatO or self.repeatAll):
-                await ctx.send("``Repeating off``")
-                self.repeatO = False
-                self.repeatAll = False
-            elif "off".upper() in (x.upper() for x in repeat):
-                await ctx.send("``No songs queued idot.``")
-
-        except IndexError:
-            await ctx.send("``Usage: ur repeat``**``(One/All/Off)``**")
+    # @commands.command(pass_context=True, aliases=['r'])
+    # async def repeat(self, ctx, *repeat: str):
+    #     """- ShanerBot can repeat one song, or all songs in current queue."""
+    #     try:
+    #         if "one".upper() in (x.upper() for x in repeat):
+    #             if len(self.players[ctx.guild.id]) == 0:
+    #                 await ctx.send("``No songs queued idot.``")
+    #                 return
+    #             self.repeatO = True
+    #             length = len(self.players[ctx.guild.id]) - 1
+    #             embed = discord.Embed(title="**"+self.players[ctx.guild.id][length].title+"**", description=f"**Repeating ({str(datetime.timedelta(seconds=round(self.players[ctx.guild.id][length].duration)))})**",
+    #                                   url=f"https://www.youtube.com/watch?v={self.players[ctx.guild.id][length].id}",
+    #                                   colour=discord.Color.dark_magenta())
+    #             embed.set_thumbnail(url=self.players[ctx.guild.id][length].imageurl)
+    #             await ctx.send(embed=embed)
+    #         elif "all".upper() in (x.upper() for x in repeat):
+    #             if len(self.players[ctx.guild.id]) == 0:
+    #                 await ctx.send("``No songs queued idot.``")
+    #                 return
+    #             self.repeatAll = True
+    #             self.repeatAllNum = len(self.queues)-1 #still have to work on
+    #         elif "off".upper() in (x.upper() for x in repeat) and (self.repeatO or self.repeatAll):
+    #             await ctx.send("``Repeating off``")
+    #             self.repeatO = False
+    #             self.repeatAll = False
+    #         elif "off".upper() in (x.upper() for x in repeat):
+    #             await ctx.send("``No songs queued idot.``")
+    #
+    #     except IndexError:
+    #         await ctx.send("``Usage: ur repeat``**``(One/All/Off)``**")
 
     @commands.command(pass_context=True)
     async def search(self, ctx, *query: str):
@@ -391,36 +349,40 @@ class Music(commands.Cog):
             await ctx.send("``search what song man?``")
             return
 
+        voice = get(self.client.voice_clients, guild=ctx.guild)
+        if voice is None:
+            return
+
         def check_queue():
 
-            if self.players:
+            if self.players[ctx.guild.id]:
                 voice = get(self.client.voice_clients, guild=ctx.guild)
                 # if self.restart:
                 #     voice.play(self.restart)
                 #     self.restart = False
                 if self.repeatO:
-                    print(self.players[-1].title)
-                    voice.play(discord.FFmpegPCMAudio(self.players[-1].url, **ffmpeg_options), after=lambda e: check_queue())
+                    print(self.players[ctx.guild.id][-1].title)
+                    voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options), after=lambda e: check_queue())
                 elif self.repeatAll:
                     self.repeatAllNum -= 1
 
                     voice.source = discord.PCMVolumeTransformer(voice.source)
                     voice.source.volume = 0.25
                 else:
-                    self.players.pop()
-                    player = self.players[-1]
+                    self.players[ctx.guild.id].pop()
+                    player = self.players[ctx.guild.id][-1]
                     voice.play(player, after=lambda e: check_queue())
             else:
-                self.players.clear()
+                self.players[ctx.guild.id].clear()
 
-        voice = get(self.client.voice_clients, guild=ctx.guild) #for if no songs in queue
-        if (voice.is_playing() is False) and (voice.is_paused() is False):
+ #for if no songs in queue
+        if not self.players[ctx.guild.id]: #(voice.is_playing() is False) and (voice.is_paused() is False):
 
             song_search = " ".join(query)
             if "www.youtube.com/watch?v=" in song_search:
                 try:
                     player = await YTDLSource.from_url(song_search, loop=self.client.loop, stream=True)
-                    self.players.insert(0, player)
+                    self.players[ctx.guild.id].insert(0, player)
                     embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
                                           url=f"https://www.youtube.com/watch?v={player.id}")
                     embed.set_author(name=str(ctx.author.name) + ": Now Playing",
@@ -489,7 +451,7 @@ class Music(commands.Cog):
                 return
             async with ctx.typing():
                 player = await YTDLSource.from_url(f"https://www.youtube.com/watch?v={urllist[int(msg.content)-1]}", loop=self.client.loop, stream=True)
-                self.players.insert(0, player)
+                self.players[ctx.guild.id].insert(0, player)
                 embed = discord.Embed(title="**"+player.title+"**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
                 embed.set_author(name=str(ctx.author.name) + ": Now Playing", icon_url=ctx.author.avatar_url)#client.user.avatar_url)
                 embed.set_thumbnail(url=player.imageurl)
@@ -499,19 +461,19 @@ class Music(commands.Cog):
                 await ctx.send(embed=embed)
                 ctx.voice_client.play(player, after=lambda e: check_queue())
 
-        elif voice.is_playing() or voice.is_paused(): #adding to queue
+        elif self.players[ctx.guild.id]: #voice.is_playing() or voice.is_paused(): #adding to queue
 
             song_search = " ".join(query)
             if "www.youtube.com/watch?v=" in song_search:
                 try:
                     player = await YTDLSource.from_url(song_search, loop=self.client.loop, stream=True)
-                    self.players.insert(0, player)
+                    self.players[ctx.guild.id].insert(0, player)
                     embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
                                           url=f"https://www.youtube.com/watch?v={player.id}")
                     embed.set_author(name=str(ctx.author.name) + ": Adding a song", icon_url=ctx.author.avatar_url)
                     embed.set_thumbnail(url=player.imageurl)
                     embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
-                    embed.add_field(name="Position in queue", value=str(len(self.players) - 1))
+                    embed.add_field(name="Position in queue", value=str(len(self.players[ctx.guild.id]) - 1))
                     embed.add_field(name="Uploader", value=player.uploader)
                     await ctx.send(embed=embed)
                     return
@@ -577,12 +539,12 @@ class Music(commands.Cog):
                 player = await YTDLSource.from_url(
                     f"https://www.youtube.com/watch?v={urllist[int(msg.content) - 1]}", loop=self.client.loop,
                     stream=True)
-                self.players.insert(0, player)
+                self.players[ctx.guild.id].insert(0, player)
                 embed = discord.Embed(title="**"+player.title+"**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
                 embed.set_author(name=str(ctx.author.name) + ": Adding a song", icon_url=ctx.author.avatar_url)
                 embed.set_thumbnail(url=player.imageurl)
                 embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
-                embed.add_field(name="Position in queue", value=str(len(self.players)-1))
+                embed.add_field(name="Position in queue", value=str(len(self.players[ctx.guild.id])-1))
                 embed.add_field(name="Uploader", value=player.uploader)
                 await search.delete()
                 await ctx.send(embed=embed)
@@ -593,8 +555,8 @@ class Music(commands.Cog):
         if skip:
             voice = get(self.client.voice_clients, guild=ctx.guild)
             if voice and voice.is_playing():
-                if 0 < skip[0] < len(self.players):
-                    player = self.players.pop(len(self.players)-1-skip[0])
+                if 0 < skip[0] < len(self.players[ctx.guild.id]):
+                    player = self.players[ctx.guild.id].pop(len(self.players[ctx.guild.id])-1-skip[0])
                     embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
                                           url=f"https://www.youtube.com/watch?v={player.id}")
                     embed.set_author(name=str(ctx.author.name) + ": Removed a song", icon_url=ctx.author.avatar_url)
@@ -624,7 +586,6 @@ class Music(commands.Cog):
                 self.client.loop.create_task(self.disconnectTimer(ctx))
         except AttributeError:
             await ctx.send("``man where am i going to play it huh? join channel first idot.``")
-            return
 
     async def disconnectTimer(self, ctx): #ensures if bot is not in use, it'll leave
         await self.client.wait_until_ready()

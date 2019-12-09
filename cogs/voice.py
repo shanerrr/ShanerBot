@@ -12,7 +12,7 @@ class Voice(commands.Cog):
 
         voice = get(self.client.voice_clients, guild=member.guild)
         if voice and not member.bot:
-            if not voice.is_playing():
+            if not voice.is_playing() and not voice.is_paused():
                 if before.channel and not after.channel:
                     if before.channel == voice.channel:
                         voice.stop()
