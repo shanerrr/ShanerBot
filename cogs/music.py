@@ -2,13 +2,13 @@ import discord
 from discord.ext import commands
 from discord.utils import get
 import youtube_dl
-import os
 import datetime
+import os
 import sqlite3
 from apiclient.discovery import build
 import asyncio
 import html
-
+from async_timeout import timeout
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -28,8 +28,10 @@ ffmpeg_options = {
     'options': '-vn -threads 1'
 }
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.05):
+    def __init__(self, source, *, data, volume=0.25):
         super().__init__(source, volume)
         self.data = data
         self.title = data.get('title')
@@ -54,18 +56,15 @@ class Music(commands.Cog):
 
     def __init__(self, client):
         self.client = client
-        self.ytapi =
+        self.ytapi = "API"
         self.repeatO = False
         self.repeatAll = False
         self.repeatAllNum = 0
         self.restart = False
         self.youtube = build('youtube', 'v3', developerKey=self.ytapi)
         self.players = []
-
-        DIR = os.path.dirname(__file__)
-        self.db = sqlite3.connect(
-            os.path.join(DIR, "ServerID.db"))  # connecting to DB if this file is not there it will create it
-        self.SQL = self.db.cursor()
+        # self.db = sqlite3.connect(os.path.join(os.path.dirname(__file__), "ServerID.db"))  # connecting to DB if this file is not there it will create it
+        # self.SQL = self.db.cursor()
 
     def database(self, ctx):
         self.SQL.execute('create table if not exists Music('
@@ -103,8 +102,6 @@ class Music(commands.Cog):
     async def join(self, ctx):
         """- ShanerBot will join the channel you're currently in. How nice!"""
 
-        global voice, channel
-
         try:
             channel = ctx.message.author.voice.channel
             voice = get(self.client.voice_clients, guild=ctx.guild)
@@ -113,8 +110,11 @@ class Music(commands.Cog):
             return
 
         if voice is not None:
-            return await voice.move_to(channel)
+            await voice.move_to(channel)
+            self.client.loop.create_task(self.disconnectTimer(ctx))
+            return
         await channel.connect()
+        self.client.loop.create_task(self.disconnectTimer(ctx))
         await ctx.send(f"`ok man, i joined: {channel}.`")
 
         print(ctx.guild.id)
@@ -150,7 +150,6 @@ class Music(commands.Cog):
         else:
             await ctx.send("`no music playing so ill just pause myself.`")
 
-
     @commands.command(pass_context=True)
     async def resume(self, ctx):
         """- ShanerBot will resume any paused music. """
@@ -168,6 +167,7 @@ class Music(commands.Cog):
 
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice and voice.is_playing():
+            self.players.clear()
             voice.stop()
             await ctx.send("`ok i stopped ur songs`")
         else:
@@ -187,10 +187,10 @@ class Music(commands.Cog):
             if "HAPPY" == emotion.upper():
                 await ctx.send("``omg ur happy? me 2 man.``")
 
-        server_name = str(ctx.guild)
-        server_id = ctx.guild.id
-        channel_id = ctx.message.author.voice.channel.id
-        channel_name = str(ctx.message.author.voice.channel)
+        # server_name = str(ctx.guild)
+        # server_id = ctx.guild.id
+        # channel_id = ctx.message.author.voice.channel.id
+        # channel_name = str(ctx.message.author.voice.channel)
 
         searchlist = []
         urllist = []
@@ -198,10 +198,9 @@ class Music(commands.Cog):
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice.is_playing() or voice.is_paused(): #adding to queue using one search
 
-            if "&list=" in url[0]:
-                song_search = (url[0].split("&list="))[0]
-                await ctx.send("**``🔎YouTube: "+song_search+"``**")
-                player = await YTDLSource.from_url(f"{song_search}", loop=self.client.loop, stream=True)
+            if "&t=" in url[0] or "&list=" in url[0]:
+                await ctx.send("**``🔎YouTube: "+url[0]+"``**")
+                player = await YTDLSource.from_url(url[0], loop=self.client.loop, stream=True)
             else:
                 song_search = " ".join(url)
                 await ctx.send("**``🔎YouTube: " + song_search + "``**")
@@ -212,9 +211,14 @@ class Music(commands.Cog):
                     searchlist.append(items['snippet']['title'])
                     urllist.append(items['id']['videoId'])
 
-                player = await YTDLSource.from_url(
-                    f"https://www.youtube.com/watch?v={urllist[0]}", loop=self.client.loop,
-                    stream=True)
+                player = None
+                try: #just if invalid url
+                    player = await YTDLSource.from_url(f"https://www.youtube.com/watch?v={urllist[0]}",
+                                                       loop=self.client.loop, stream=True)
+                except IndexError:
+                    await ctx.send("``omg man, i can't play that video. im so sorry 😔``")
+                    return
+
             async with ctx.typing():
                 self.players.insert(0, player)
                 embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
@@ -234,13 +238,6 @@ class Music(commands.Cog):
                     if self.repeatO:
                         voice.play(self.players[-1], after=lambda e: check_queue())
                     elif self.repeatAll:
-                        self.repeatAllNum -= 1
-                        # if self.repeatAllNum == -1:
-                        # self.repeatAllNum = queuenum - 1
-                        # print(self.repeatAllNum)
-                        # voice.play(
-                        # discord.FFmpegPCMAudio(DIR + "/" + (self.queues[self.repeatAllNum].split("`|`"))[1] + ".mp3"),
-                        # after=lambda e: check_queue())
                         voice.source = discord.PCMVolumeTransformer(voice.source)
                         voice.source.volume = 0.25
                     self.players.pop()
@@ -249,10 +246,9 @@ class Music(commands.Cog):
                 else:
                     self.players.clear()
 
-            if "&list=" in url[0]:
-                song_search = (url[0].split("&list="))[0]
-                await ctx.send("**``🔎YouTube: "+song_search+"``**")
-                player = await YTDLSource.from_url(f"{song_search}", loop=self.client.loop, stream=True)
+            if "&t=" in url[0] or "&list=" in url[0]:
+                await ctx.send("**``🔎YouTube: "+url[0]+"``**")
+                player = await YTDLSource.from_url(url[0], loop=self.client.loop, stream=True)
             else:
                 song_search = " ".join(url)
                 await ctx.send("**``🔎YouTube: " + song_search + "``**")
@@ -263,9 +259,14 @@ class Music(commands.Cog):
                     searchlist.append(items['snippet']['title'])
                     urllist.append(items['id']['videoId'])
 
-                player = await YTDLSource.from_url(
-                    f"https://www.youtube.com/watch?v={urllist[0]}", loop=self.client.loop,
-                    stream=True)
+                player = None #just to init player var
+                try: #for if nothing is found
+                    player = await YTDLSource.from_url(
+                        f"https://www.youtube.com/watch?v={urllist[0]}", loop=self.client.loop,
+                        stream=True)
+                except IndexError:
+                    await ctx.send("``omg man, i can't play that video. im so sorry 😔``")
+                    return
 
             async with ctx.typing():
                 self.players.insert(0, player)
@@ -331,7 +332,7 @@ class Music(commands.Cog):
             return
         if len(self.players) == 1:
             embed = discord.Embed(title="**"+(self.players[-1]).title+"**", description="**Playing Now**",
-                                  url=(self.players[-1]).url,
+                                  url=f"https://www.youtube.com/watch?v={(self.players[-1]).id}",
                                   colour=discord.Color.dark_magenta())
             embed.set_thumbnail(url=(self.players[-1]).imageurl)
             embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
@@ -350,7 +351,6 @@ class Music(commands.Cog):
                                                                                 item.id, inline=False)
                 pos += 1
             await ctx.send(embed=embed)
-            print(self.players[-1].read().decode("utf-8"))
 
     @commands.command(pass_context=True, aliases=['r'])
     async def repeat(self, ctx, *repeat: str):
@@ -403,12 +403,7 @@ class Music(commands.Cog):
                     voice.play(discord.FFmpegPCMAudio(self.players[-1].url, **ffmpeg_options), after=lambda e: check_queue())
                 elif self.repeatAll:
                     self.repeatAllNum -= 1
-                    #if self.repeatAllNum == -1:
-                        #self.repeatAllNum = queuenum - 1
-                    #print(self.repeatAllNum)
-                    #voice.play(
-                        #discord.FFmpegPCMAudio(DIR + "/" + (self.queues[self.repeatAllNum].split("`|`"))[1] + ".mp3"),
-                        #after=lambda e: check_queue())
+
                     voice.source = discord.PCMVolumeTransformer(voice.source)
                     voice.source.volume = 0.25
                 else:
@@ -422,6 +417,24 @@ class Music(commands.Cog):
         if (voice.is_playing() is False) and (voice.is_paused() is False):
 
             song_search = " ".join(query)
+            if "www.youtube.com/watch?v=" in song_search:
+                try:
+                    player = await YTDLSource.from_url(song_search, loop=self.client.loop, stream=True)
+                    self.players.insert(0, player)
+                    embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
+                                          url=f"https://www.youtube.com/watch?v={player.id}")
+                    embed.set_author(name=str(ctx.author.name) + ": Now Playing",
+                                     icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
+                    embed.set_thumbnail(url=player.imageurl)
+                    embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
+                    embed.add_field(name="Uploader", value=player.uploader)
+                    await ctx.send(embed=embed)
+                    ctx.voice_client.play(player, after=lambda e: check_queue())
+                    return
+                except youtube_dl.DownloadError:
+                    await ctx.send("``omg man, i can't play that video. im so sorry 😔``")
+                    return
+
             searchlist = []
             urllist = []
 
@@ -452,22 +465,23 @@ class Music(commands.Cog):
             embed.set_author(name=str(ctx.author.name)+": Picking a song", icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
             embed.add_field(name="type 'cancel' to cancel request", value="**Select a number (1-10):**")
             search = await ctx.send(embed=embed)
-            while True:
-                try:
-                    msg = await self.client.wait_for('message', check=lambda message: message.author == ctx.author and message.channel == ctx.channel, timeout=15)
-                    try:
-                        if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
-                            break
-                        elif int(msg.content) in range(1, 11):
-                            break
-                        else:
-                            raise ValueError
-                    except ValueError:
-                        continue
-                except asyncio.TimeoutError:
-                    await search.delete()
-                    await ctx.send("❌"+" ``man, you didn't choose a song in time.``")
-                    return
+            try:
+                async with timeout(20):
+                    while True:
+                        msg = await self.client.wait_for('message', check=lambda message: message.author == ctx.author and message.channel == ctx.channel)
+                        try:
+                            if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
+                                break
+                            elif int(msg.content) in range(1, 11):
+                                break
+                            else:
+                                raise ValueError
+                        except ValueError:
+                            continue
+            except asyncio.TimeoutError:
+                await search.delete()
+                await ctx.send("❌"+" ``man, you didn't choose a song in time.``")
+                return
             if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
                 msg = None
                 await search.delete()
@@ -488,6 +502,23 @@ class Music(commands.Cog):
         elif voice.is_playing() or voice.is_paused(): #adding to queue
 
             song_search = " ".join(query)
+            if "www.youtube.com/watch?v=" in song_search:
+                try:
+                    player = await YTDLSource.from_url(song_search, loop=self.client.loop, stream=True)
+                    self.players.insert(0, player)
+                    embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
+                                          url=f"https://www.youtube.com/watch?v={player.id}")
+                    embed.set_author(name=str(ctx.author.name) + ": Adding a song", icon_url=ctx.author.avatar_url)
+                    embed.set_thumbnail(url=player.imageurl)
+                    embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
+                    embed.add_field(name="Position in queue", value=str(len(self.players) - 1))
+                    embed.add_field(name="Uploader", value=player.uploader)
+                    await ctx.send(embed=embed)
+                    return
+                except youtube_dl.DownloadError:
+                    await ctx.send("``omg man, i can't play that video. im so sorry 😔``")
+                    return
+
             searchlist = [] #has all the results
             urllist = [] #for video id for player
 
@@ -519,24 +550,24 @@ class Music(commands.Cog):
                              icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
             embed.add_field(name="type 'cancel' to cancel request", value="**Select a number (1-10):**")
             search = await ctx.send(embed=embed)
-            while True:
-                try:
-                    msg = await self.client.wait_for('message', check=lambda
-                        message: message.author == ctx.author and message.channel == ctx.channel, timeout=15) #right now wont expire until user stops typing and stops typinf for 15s
-                    try:
-                        if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
-                            break
-                        elif int(msg.content) in range(1, 11):
-                            break
-                        else:
-                            raise TypeError
-                    except TypeError:
-                        msg = None
-                        continue
-                except asyncio.TimeoutError:
-                    await search.delete()
-                    await ctx.send("❌" + " ``man, you didn't choose a song in time.``")
-                    return
+            try:
+                async with timeout(20):
+                    while True:
+                        msg = await self.client.wait_for('message', check=lambda
+                            message: message.author == ctx.author and message.channel == ctx.channel)
+                        try:
+                            if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
+                                break
+                            elif int(msg.content) in range(1, 11):
+                                break
+                            else:
+                                raise ValueError
+                        except ValueError:
+                            continue
+            except asyncio.TimeoutError:
+                await search.delete()
+                await ctx.send("❌" + " ``man, you didn't choose a song in time.``")
+                return
             if msg.content.upper() == "CANCEL" or ".UR SEARCH" in msg.content.upper():
                 msg = None
                 await search.delete()
@@ -556,15 +587,27 @@ class Music(commands.Cog):
                 await search.delete()
                 await ctx.send(embed=embed)
 
-    @commands.command(pass_context=True) #testing
-    async def restart(self, ctx):
-        """- ShanerBot will restart a playing song."""
-        voice = get(self.client.voice_clients, guild=ctx.guild)
-        voice.stop()
-        self.restart = await YTDLSource.from_url(
-                    f"https://www.youtube.com/watch?v={self.players[-1].id}", loop=self.client.loop,
-                    stream=True)
-
+    @commands.command(pass_context=True)
+    async def remove(self, ctx, *skip: int):
+        """- ShanerBot will remove a song from queue."""
+        if skip:
+            voice = get(self.client.voice_clients, guild=ctx.guild)
+            if voice and voice.is_playing():
+                if 0 < skip[0] < len(self.players):
+                    player = self.players.pop(len(self.players)-1-skip[0])
+                    embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
+                                          url=f"https://www.youtube.com/watch?v={player.id}")
+                    embed.set_author(name=str(ctx.author.name) + ": Removed a song", icon_url=ctx.author.avatar_url)
+                    embed.set_thumbnail(url=player.imageurl)
+                    embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
+                    embed.add_field(name="Was in queue", value=str(skip[0]))
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("``yup, sure, let me remove this non-existent song.``")
+            else:
+                await ctx.send("``bruh, i need a song in the queue to remove it.``")
+        else:
+            await ctx.send("``remove what song?``")
 
     @play.before_invoke
     @search.before_invoke
@@ -574,12 +617,22 @@ class Music(commands.Cog):
             channel = ctx.message.author.voice.channel
             if voice is not None:
                 await voice.move_to(channel)
+                self.client.loop.create_task(self.disconnectTimer(ctx))
+                return
             else:
                 await channel.connect()
+                self.client.loop.create_task(self.disconnectTimer(ctx))
         except AttributeError:
             await ctx.send("``man where am i going to play it huh? join channel first idot.``")
             return
 
+    async def disconnectTimer(self, ctx): #ensures if bot is not in use, it'll leave
+        await self.client.wait_until_ready()
+        voice = get(self.client.voice_clients, guild=ctx.guild)
+        await asyncio.sleep(1000)
+        while voice.is_playing():
+            await asyncio.sleep(1200)
+        await voice.disconnect()
 
 def setup(client):
     client.add_cog(Music(client))

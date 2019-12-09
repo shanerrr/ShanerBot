@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord.utils import get
-import asyncio
 
 class Voice(commands.Cog):
 
@@ -9,7 +8,7 @@ class Voice(commands.Cog):
         self.client = client
 
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):  # strictly joining and disconnecting.
+    async def on_voice_state_update(self, member, before, after):  # just for fun strictly joining and disconnecting.
 
         voice = get(self.client.voice_clients, guild=member.guild)
         if voice and not member.bot:
@@ -19,13 +18,14 @@ class Voice(commands.Cog):
                         voice.stop()
                         voice.play(discord.FFmpegPCMAudio("UserDC.mp3"))
                         voice.source = discord.PCMVolumeTransformer(voice.source)
-                    voice.source.volume = 0.07
+                    voice.source.volume = 0.250
                 elif after.channel and not before.channel:
                     if after.channel == voice.channel:
                         voice.stop()
                         voice.play(discord.FFmpegPCMAudio("UserJC.mp3"))
                         voice.source = discord.PCMVolumeTransformer(voice.source)
-                        voice.source.volume = 0.07
+                        voice.source.volume = 0.250
+
 
 def setup(client):
     client.add_cog(Voice(client))
