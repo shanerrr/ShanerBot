@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 
-client = commands.Bot(command_prefix=commands.when_mentioned_or('ur '), description="ShanerBot is too cool for any discord server.")
+client = commands.Bot(command_prefix=commands.when_mentioned_or('.'), description="ShanerBot is too cool for any discord server.")
 
 @client.event
 async def on_guild_join(guild):
@@ -19,4 +19,4 @@ async def on_ready():
     await client.change_presence(status=discord.Status.online, activity=discord.Activity(name="ur pls invite me", type=discord.ActivityType.listening))
     print('client ready')
 
-client.run("token")
+client.run("TOKEN")
