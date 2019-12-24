@@ -24,13 +24,13 @@ class Bot(commands.Cog):
     async def changestatus(self, ctx, status: int):
         if str(ctx.author.id) == "168603442175148032":
             if status == 0: #offline
-                await self.client.change_presence(status=discord.Status.offline, activity=discord.Activity(name="ur pls invite me", type=discord.ActivityType.listening))
+                await self.client.change_presence(status=discord.Status.offline, activity=discord.Activity(name="ur help", type=discord.ActivityType.listening))
             elif status == 1: #online
-                await self.client.change_presence(status=discord.Status.online, activity=discord.Activity(name="ur pls invite me", type=discord.ActivityType.listening))
+                await self.client.change_presence(status=discord.Status.online, activity=discord.Activity(name="ur help", type=discord.ActivityType.listening))
             elif status == 2: #do not disturb
-                await self.client.change_presence(status=discord.Status.do_not_disturb, activity=discord.Activity(name="ur pls invite me", type=discord.ActivityType.listening))
+                await self.client.change_presence(status=discord.Status.do_not_disturb, activity=discord.Activity(name="ur help", type=discord.ActivityType.listening))
             elif status == 3: #idle
-                await self.client.change_presence(status=discord.Status.idle, activity=discord.Activity(name="ur pls invite me", type=discord.ActivityType.listening))
+                await self.client.change_presence(status=discord.Status.idle, activity=discord.Activity(name="ur help", type=discord.ActivityType.listening))
             else:
                 await ctx.send("``Invalid Status Code``")
         else:

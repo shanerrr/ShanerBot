@@ -18,13 +18,13 @@ class Voice(commands.Cog):
                         voice.stop()
                         voice.play(discord.FFmpegPCMAudio("UserDC.mp3"))
                         voice.source = discord.PCMVolumeTransformer(voice.source)
-                    voice.source.volume = 0.250
+                    voice.source.volume = 0.200
                 elif after.channel and not before.channel:
                     if after.channel == voice.channel:
                         voice.stop()
                         voice.play(discord.FFmpegPCMAudio("UserJC.mp3"))
                         voice.source = discord.PCMVolumeTransformer(voice.source)
-                        voice.source.volume = 0.250
+                        voice.source.volume = 0.200
 
 
 def setup(client):
