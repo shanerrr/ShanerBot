@@ -49,6 +49,7 @@ class Messaging(commands.Cog):
         embed.add_field(name="**- ur leave**", value="ShanerBot will kindly leave the voice channel it is currently in.", inline=False)
         embed.add_field(name="**- ur play (url/query)**", value="ShanerBot will only look for one song. Put in a url or a very specific search query.", inline=False)
         embed.add_field(name="**- ur search (query)**", value="ShanerBot will search YouTube, returning 10 searches allowing you to choose what song to play or add to queue.", inline=False)
+        embed.add_field(name="**- ur restart**", value=" ShanerBot will restart a playing song.", inline=False)
         embed.add_field(name="**- ur pause**", value="ShanerBot will pause any playing music.", inline=False)
         embed.add_field(name="**- ur stop**", value="ShanerBot will delete all songs in queue and stop playing any music.", inline=False)
         embed.add_field(name="**- ur skip**", value="ShanerBot will kindly skip any song for you. What a sweetheart.", inline=False)

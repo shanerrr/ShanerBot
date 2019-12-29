@@ -43,6 +43,8 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.uploader = data.get('uploader')
         self.duration = data.get('duration')
         self.id = data.get('id')
+        #self.live = data.get('liveBroadcastContent')
+        print(data)
 
     @classmethod
     async def from_url(cls, ctx, url, *, loop=None, stream=False):
@@ -56,6 +58,8 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if data['duration'] > 5400:
             await ctx.send("😠"+" ``Song too long man.``")
             raise AudioTooLongError
+        elif data['duration'] == 0: #livestream check
+            await ctx.send("oof I cant play livestreams")
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
@@ -71,12 +75,13 @@ class Music(commands.Cog):
         self.repeatO = defaultdict(lambda: False, self.repeatO)
 
         self.repeatAll = {}
-        # self.repeatAllNum = 0
-        # self.restart = False
+        self.repeatAll = defaultdict(lambda: False, self.repeatAll)
+
+        self.restart = {}
+        self.restart = defaultdict(lambda: False, self.restart)
 
         self.active = {}
         self.active = defaultdict(lambda: False, self.active)# sets all new keys to false
-
         self.players = defaultdict(list)
 
     @commands.command(pass_context=True)
@@ -105,6 +110,7 @@ class Music(commands.Cog):
         if voice and voice.is_connected():
             self.players[ctx.guild.id].clear()
             self.repeatO[ctx.guild.id] = False
+            self.repeatAll[ctx.guild.id] = False
             await voice.disconnect()
             await ctx.send(f"`ok, i left: {voice.channel}.`")
         else:
@@ -139,6 +145,8 @@ class Music(commands.Cog):
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice and voice.is_playing():
             self.players[ctx.guild.id].clear()
+            self.repeatO[ctx.guild.id] = False
+            self.repeatAll[ctx.guild.id] = False
             voice.stop()
             await ctx.send("`ok i stopped ur songs`")
         else:
@@ -148,12 +156,14 @@ class Music(commands.Cog):
     async def play(self, ctx, *url: str):
         """- ShanerBot will only look for one song. Put in a url or a very specific search query. """
 
-        if len(url) < 1:
-            await ctx.send("``play what song man? enter youtube url or search.``")
-            return
-
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice is None:
+            return
+        if not url:
+            await ctx.send("``play what song man? enter youtube url or search.``")
+            return
+        if len(self.players[ctx.guild.id]) > 10:
+            await ctx.send("``sorry man, i can't have more than 10 songs queued.``")
             return
 
         searchlist = []
@@ -171,8 +181,11 @@ class Music(commands.Cog):
                 req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=1)
                 searchres = req.execute()
                 for items in searchres['items']:
-                    searchlist.append(items['snippet']['title'])
+                    searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
+                if searchlist[0]['liveBroadcastContent'] == "live":
+                    await ctx.send("``I can't play livestreams dude.``")
+                    return
 
                 player = None
                 try: #just if invalid url
@@ -184,32 +197,41 @@ class Music(commands.Cog):
                 except AudioTooLongError:
                     return
 
-            async with ctx.typing():
-                self.players[ctx.guild.id].insert(0, player)
-                embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
-                embed.set_author(name=str(ctx.author.name) + ": Adding a song",
-                                 icon_url=ctx.author.avatar_url)
-                embed.set_thumbnail(url=player.imageurl)
-                embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
-                embed.add_field(name="Position in queue", value=str(len(self.players[ctx.guild.id]) - 1))
-                embed.add_field(name="Uploader", value=player.uploader)
+            #async with ctx.typing():
+            self.players[ctx.guild.id].insert(0, player)
+            embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(), url=f"https://www.youtube.com/watch?v={player.id}")
+            embed.set_author(name=str(ctx.author.name) + ": Adding a song",
+                             icon_url=ctx.author.avatar_url)
+            embed.set_thumbnail(url=player.imageurl)
+            embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
+            embed.add_field(name="Position in queue", value=str(len(self.players[ctx.guild.id]) - 1))
+            embed.add_field(name="Uploader", value=player.uploader)
             await ctx.send(embed=embed)
 
-        elif not self.players[ctx.guild.id]: # no items in queue
+        elif not self.players[ctx.guild.id]:# no items in queue
 
             def check_queue():
                 if self.players[ctx.guild.id]:
                     voice = get(self.client.voice_clients, guild=ctx.guild)
-                    if self.repeatO[ctx.guild.id]:
+                    if self.restart[ctx.guild.id]:
                         voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
                                    after=lambda e: check_queue())
                         voice.source = discord.PCMVolumeTransformer(voice.source)
                         voice.source.volume = 0.10
-
-                    elif self.repeatAll:
+                        self.restart[ctx.guild.id] = False
+                    elif self.repeatO[ctx.guild.id]:
+                        voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
+                                   after=lambda e: check_queue())
                         voice.source = discord.PCMVolumeTransformer(voice.source)
-                        voice.source.volume = 0.20
-
+                        voice.source.volume = 0.10
+                    elif self.repeatAll[ctx.guild.id]:
+                        if len(self.players[ctx.guild.id]) == 1:
+                            voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
+                                       after=lambda e: check_queue())
+                        else:
+                            songreinsert = self.players[ctx.guild.id].pop()
+                            voice.play(self.players[ctx.guild.id][-1], after=lambda e: check_queue())
+                            self.players[ctx.guild.id].insert(0, songreinsert)
                     else:
                         self.players[ctx.guild.id].pop()
                         player = self.players[ctx.guild.id][-1]
@@ -230,8 +252,11 @@ class Music(commands.Cog):
                 req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=1)
                 searchres = req.execute()
                 for items in searchres['items']:
-                    searchlist.append(items['snippet']['title'])
+                    searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
+                if searchlist[0]['liveBroadcastContent'] == "live":
+                    await ctx.send("``I can't play livestreams dude.``")
+                    return
 
                 player = None #just to init player var
                 try: #for if nothing is found
@@ -244,16 +269,16 @@ class Music(commands.Cog):
                 except AudioTooLongError:
                     return
 
-            async with ctx.typing():
-                self.players[ctx.guild.id].insert(0, player)
-                embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
-                                      url=f"https://www.youtube.com/watch?v={player.id}")
-                embed.set_author(name=str(ctx.author.name) + ": Now Playing",
-                                 icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
-                embed.set_thumbnail(url=player.imageurl)
-                embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
-                embed.add_field(name="Uploader", value=player.uploader)
-                ctx.voice_client.play(player, after=lambda e: check_queue())
+            # async with ctx.typing():
+            self.players[ctx.guild.id].insert(0, player)
+            embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
+                                  url=f"https://www.youtube.com/watch?v={player.id}")
+            embed.set_author(name=str(ctx.author.name) + ": Now Playing",
+                             icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
+            embed.set_thumbnail(url=player.imageurl)
+            embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
+            embed.add_field(name="Uploader", value=player.uploader)
+            ctx.voice_client.play(player, after=lambda e: check_queue())
             await ctx.send(embed=embed)
 
         for emotion in url:
@@ -268,26 +293,15 @@ class Music(commands.Cog):
         self.repeatO[ctx.guild.id] = False
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice and voice.is_playing():
-            if self.repeatAll: #for when queue is on repeat all
-                songskip = (self.queues[self.repeatAllNum]).split("`|`")
-                embed = discord.Embed(title="**" + songskip[0] + "**", colour=discord.Color.dark_magenta(),
-                                      url=songskip[3])
+            async with ctx.typing():
+                songskip = (self.players[ctx.guild.id][-1])
+                embed = discord.Embed(title="**" + songskip.title + "**", colour=discord.Color.dark_magenta(),
+                                      url=f"https://www.youtube.com/watch?v={songskip.id}")
                 embed.set_author(name=str(ctx.author.name) + ": Skipped a song",
                                  icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
-                embed.set_thumbnail(url=songskip[3])
-                await ctx.send(embed=embed)
-                voice.stop() #stops song and starts next song if there is any song queued
-            else:
-                async with ctx.typing():
-                    songskip = (self.players[ctx.guild.id][-1])
-                    embed = discord.Embed(title="**" + songskip.title + "**", colour=discord.Color.dark_magenta(),
-                                          url=f"https://www.youtube.com/watch?v={songskip.id}")
-                    embed.set_author(name=str(ctx.author.name) + ": Skipped a song",
-                                     icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
-                    embed.set_thumbnail(url=songskip.imageurl)
-                    voice.stop()  # stops song and starts next song if there is any song queued
-                await ctx.send(embed=embed)
-
+                embed.set_thumbnail(url=songskip.imageurl)
+                voice.stop()  # stops song and starts next song if there is any song queued
+            await ctx.send(embed=embed)
         else:
             await ctx.send("`no song to skip??????????`")
 
@@ -321,6 +335,13 @@ class Music(commands.Cog):
                                       colour=discord.Color.dark_magenta())
                 embed.set_thumbnail(url=(self.players[ctx.guild.id][-1]).imageurl)
                 embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
+            elif self.repeatAll[ctx.guild.id]:
+                embed = discord.Embed(title="**" + (self.players[ctx.guild.id][-1]).title + "**",
+                                      description="**Playing Now (🔁)**",
+                                      url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][-1]).id}",
+                                      colour=discord.Color.dark_magenta())
+                embed.set_thumbnail(url=(self.players[ctx.guild.id][-1]).imageurl)
+                embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
             else:
                 embed = discord.Embed(title="**"+(self.players[ctx.guild.id][-1]).title+"**", description="**Playing Now**",
                                       url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][-1]).id}",
@@ -333,6 +354,11 @@ class Music(commands.Cog):
             length = len(self.players[ctx.guild.id])-1
             if self.repeatO[ctx.guild.id]:
                 embed = discord.Embed(title="**"+(self.players[ctx.guild.id][length]).title+"**", url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][length]).id}", description="**Playing Now (🔂)**",
+                                      colour=discord.Color.dark_magenta())
+            elif self.repeatAll[ctx.guild.id]:
+                embed = discord.Embed(title="**" + (self.players[ctx.guild.id][-1]).title + "**",
+                                      description="**Playing Now (🔁)**",
+                                      url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][-1]).id}",
                                       colour=discord.Color.dark_magenta())
             else:
                 embed = discord.Embed(title="**"+(self.players[ctx.guild.id][length]).title+"**", url=f"https://www.youtube.com/watch?v={(self.players[ctx.guild.id][length]).id}", description="**Playing Now**",
@@ -354,6 +380,7 @@ class Music(commands.Cog):
             await ctx.send("``what? repeat one or all songs? (one/all/off)``")
         else:
             if "one".upper() in (x.upper() for x in repeat):
+                self.repeatAll[ctx.guild.id] = False
                 if len(self.players[ctx.guild.id]) == 0:
                     await ctx.send("``No songs queued idot.``")
                     return
@@ -366,17 +393,16 @@ class Music(commands.Cog):
                 embed.set_footer(text=str(self.client.user.name), icon_url=self.client.user.avatar_url)
                 await ctx.send(embed=embed)
             elif "all".upper() in (x.upper() for x in repeat):
-                await ctx.send("``Not avaliable right now man sorry :(``")
-                return
-                # if len(self.players[ctx.guild.id]) == 0:
-                #     await ctx.send("``No songs queued idot.``")
-                #     return
-                # self.repeatAll = True
-                # self.repeatAllNum = len(self.queues)-1 #still have to work on
+                self.repeatO[ctx.guild.id] = False
+                if len(self.players[ctx.guild.id]) == 0:
+                    await ctx.send("``No songs queued idot.``")
+                    return
+                self.repeatAll[ctx.guild.id] = True
+                await ctx.send("🔁"+"`` Queue is repeating.``")
             elif "off".upper() in (x.upper() for x in repeat) and (self.repeatO or self.repeatAll):
                 await ctx.send("``ok man repeating is off.``")
                 self.repeatO[ctx.guild.id] = False
-                self.repeatAll = False
+                self.repeatAll[ctx.guild.id] = False
             elif "off".upper() in (x.upper() for x in repeat):
                 await ctx.send("``No songs queued idot.``")
 
@@ -388,31 +414,45 @@ class Music(commands.Cog):
             await ctx.send("🛑"+" ``bro, i'm busy right now. Reply to the active search man.``")
             return
 
-        if len(query) < 1:
-            await ctx.send("``search what song man?``")
-            return
-
         voice = get(self.client.voice_clients, guild=ctx.guild)
         if voice is None:
             return
+        if not query:
+            await ctx.send("``search what song man?``")
+            return
+        if len(self.players[ctx.guild.id]) > 10:
+            await ctx.send("``sorry man, i can't have more than 10 songs queued.``")
+            return
 
         def check_queue():
-
             if self.players[ctx.guild.id]:
                 voice = get(self.client.voice_clients, guild=ctx.guild)
-                if self.repeatO[ctx.guild.id]:
+                if self.restart[ctx.guild.id]:
+                    voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
+                               after=lambda e: check_queue())
+                    voice.source = discord.PCMVolumeTransformer(voice.source)
+                    voice.source.volume = 0.10
+                    self.restart[ctx.guild.id] = False
+                elif self.repeatO[ctx.guild.id]:
                     voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options), after=lambda e: check_queue())
                     voice.source = discord.PCMVolumeTransformer(voice.source)
                     voice.source.volume = 0.10
-                elif self.repeatAll:
-                    self.repeatAllNum -= 1
-
-                    voice.source = discord.PCMVolumeTransformer(voice.source)
-                    voice.source.volume = 0.25
+                elif self.repeatAll[ctx.guild.id]:
+                    if len(self.players[ctx.guild.id]) == 1:
+                        voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
+                                   after=lambda e: check_queue())
+                        voice.source = discord.PCMVolumeTransformer(voice.source)
+                        voice.source.volume = 0.10
+                    else:
+                        songreinsert = self.players[ctx.guild.id].pop()
+                        self.players[ctx.guild.id].insert(0, songreinsert)
+                        voice.play(discord.FFmpegPCMAudio(self.players[ctx.guild.id][-1].url, **ffmpeg_options),
+                                   after=lambda e: check_queue())
+                        voice.source = discord.PCMVolumeTransformer(voice.source)
+                        voice.source.volume = 0.10
                 else:
                     self.players[ctx.guild.id].pop()
-                    player = self.players[ctx.guild.id][-1]
-                    voice.play(player, after=lambda e: check_queue())
+                    voice.play(self.players[ctx.guild.id][-1], after=lambda e: check_queue())
             else:
                 self.players[ctx.guild.id].clear()
 
@@ -426,7 +466,7 @@ class Music(commands.Cog):
                     embed = discord.Embed(title="**" + player.title + "**", colour=discord.Color.dark_magenta(),
                                           url=f"https://www.youtube.com/watch?v={player.id}")
                     embed.set_author(name=str(ctx.author.name) + ": Now Playing",
-                                     icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
+                                     icon_url=ctx.author.avatar_url)
                     embed.set_thumbnail(url=player.imageurl)
                     embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
                     embed.add_field(name="Uploader", value=player.uploader)
@@ -444,28 +484,28 @@ class Music(commands.Cog):
 
             req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=10)
             searchres = req.execute()
-            if len(searchres['items']) != 0:
+            if len(searchres['items']) == 10:
                 for items in searchres['items']:
-                    searchlist.append(html.unescape(items['snippet']['title']))
+                    searchlist.append(html.unescape(items['snippet']))
                     urllist.append(items['id']['videoId'])
             else:
                 req = self.youtube.search().list(q="video|"+song_search, part='snippet', type='video', maxResults=10) #ensures we always get 10 results but videos  may be more general now
                 searchres = req.execute()
                 for items in searchres['items']:
-                    searchlist.append(html.unescape(items['snippet']['title']))
+                    searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
 
-            embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+searchlist[0]
-                                                                          +"\n**[2]:** "+searchlist[1]
-                                                                          +"\n**[3]:** "+searchlist[2]
-                                                                          +"\n**[4]:** "+searchlist[3]
-                                                                          +"\n**[5]:** "+searchlist[4]
-                                                                          +"\n**[6]:** "+searchlist[5]
-                                                                          +"\n**[7]:** "+searchlist[6]
-                                                                          +"\n**[8]:** "+searchlist[7]
-                                                                          +"\n**[9]:** "+searchlist[8]
-                                                                          +"\n**[10]:** "+searchlist[9],
-                                  colour=discord.Color.dark_magenta())
+            embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title'])
+                                                                           + "\n**[2]:** "+html.unescape(searchlist[1]['title'])
+                                                                           + "\n**[3]:** "+html.unescape(searchlist[2]['title'])
+                                                                           + "\n**[4]:** "+html.unescape(searchlist[3]['title'])
+                                                                           + "\n**[5]:** "+html.unescape(searchlist[4]['title'])
+                                                                           + "\n**[6]:** "+html.unescape(searchlist[5]['title'])
+                                                                           + "\n**[7]:** "+html.unescape(searchlist[6]['title'])
+                                                                           + "\n**[8]:** "+html.unescape(searchlist[7]['title'])
+                                                                           + "\n**[9]:** "+html.unescape(searchlist[8]['title'])
+                                                                           + "\n**[10]:** "+html.unescape(searchlist[9]['title'])
+                                  , colour=discord.Color.dark_magenta())
             embed.set_author(name=str(ctx.author.name)+": Picking a song", icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
             embed.add_field(name="type 'cancel' to cancel request", value="**Select a number (1-10):**")
             search = await ctx.send(embed=embed)
@@ -494,6 +534,12 @@ class Music(commands.Cog):
                 await ctx.send("❌" + " ``ok canceled.``")
                 self.active[ctx.guild.id] = False
                 return
+            if searchlist[int(msg.content) - 1]['liveBroadcastContent'] == "live":
+                await search.delete()
+                await ctx.send("``I can't play livestreams dude.``")
+                self.active[ctx.guild.id] = False
+                return
+
             async with ctx.typing():
                 try:
                     player = await YTDLSource.from_url(ctx, f"https://www.youtube.com/watch?v={urllist[int(msg.content)-1]}", loop=self.client.loop, stream=True)
@@ -508,7 +554,7 @@ class Music(commands.Cog):
                 embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=round(player.duration))))
                 embed.add_field(name="Uploader", value=player.uploader)
                 await search.delete()
-                await ctx.send(embed=embed)
+            await ctx.send(embed=embed)
             ctx.voice_client.play(player, after=lambda e: check_queue())
             self.active[ctx.guild.id] = False
 
@@ -540,27 +586,27 @@ class Music(commands.Cog):
 
             req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=10)
             searchres = req.execute()
-            if len(searchres['items']) != 0:
+            if len(searchres['items']) == 10:
                 for items in searchres['items']:
-                    searchlist.append(html.unescape(items['snippet']['title']))
+                    searchlist.append(html.unescape(items['snippet']))
                     urllist.append(items['id']['videoId'])
             else:
                 req = self.youtube.search().list(q="video|"+song_search, part='snippet', type='video', maxResults=10) #ensures we always get 10 results but videos  may be more general now
                 searchres = req.execute()
                 for items in searchres['items']:
-                    searchlist.append(html.unescape(items['snippet']['title']))
+                    searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
 
-            embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+searchlist[0]
-                                                                           + "\n**[2]:** "+searchlist[1]
-                                                                           + "\n**[3]:** "+searchlist[2]
-                                                                           + "\n**[4]:** "+searchlist[3]
-                                                                           + "\n**[5]:** "+searchlist[4]
-                                                                           + "\n**[6]:** "+searchlist[5]
-                                                                           + "\n**[7]:** "+searchlist[6]
-                                                                           + "\n**[8]:** "+searchlist[7]
-                                                                           + "\n**[9]:** "+searchlist[8]
-                                                                           + "\n**[10]:** "+searchlist[9]
+            embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title'])
+                                                                           + "\n**[2]:** "+html.unescape(searchlist[1]['title'])
+                                                                           + "\n**[3]:** "+html.unescape(searchlist[2]['title'])
+                                                                           + "\n**[4]:** "+html.unescape(searchlist[3]['title'])
+                                                                           + "\n**[5]:** "+html.unescape(searchlist[4]['title'])
+                                                                           + "\n**[6]:** "+html.unescape(searchlist[5]['title'])
+                                                                           + "\n**[7]:** "+html.unescape(searchlist[6]['title'])
+                                                                           + "\n**[8]:** "+html.unescape(searchlist[7]['title'])
+                                                                           + "\n**[9]:** "+html.unescape(searchlist[8]['title'])
+                                                                           + "\n**[10]:** "+html.unescape(searchlist[9]['title'])
                                   , colour=discord.Color.dark_magenta())
             embed.set_author(name=str(ctx.author.name) + ": Picking a song",
                              icon_url=ctx.author.avatar_url)  # client.user.avatar_url)
@@ -592,8 +638,13 @@ class Music(commands.Cog):
                 await ctx.send("❌" + " ``ok canceled.``")
                 self.active[ctx.guild.id] = False
                 return
-            async with ctx.typing():
+            if searchlist[int(msg.content) - 1]['liveBroadcastContent'] == "live":
+                await search.delete()
+                await ctx.send("``I can't play livestreams dude.``")
+                self.active[ctx.guild.id] = False
+                return
 
+            async with ctx.typing():
                 try:
                     player = await YTDLSource.from_url(ctx,
                     f"https://www.youtube.com/watch?v={urllist[int(msg.content) - 1]}", loop=self.client.loop,
@@ -636,6 +687,20 @@ class Music(commands.Cog):
         else:
             await ctx.send("``remove what song?``")
 
+    @commands.command(pass_context=True, aliases=['replay'])
+    async def restart(self, ctx):
+        """- ShaneBot will restart any playing song"""
+        voice = get(self.client.voice_clients, guild=ctx.guild)
+        if voice:
+            if self.players[ctx.guild.id]:
+                self.restart[ctx.guild.id] = True
+                await ctx.send("⏮"+f" ``{self.players[ctx.guild.id][-1].title}.``")
+                voice.stop()
+            else:
+                await ctx.send("``no song to skip man.......``")
+        else:
+            await ctx.send("``r u stupid? im not even in a voice channel.``")
+
     @play.before_invoke
     @search.before_invoke
     async def voice_connected(self, ctx):
@@ -675,9 +740,11 @@ class Music(commands.Cog):
                 await voice.disconnect()
                 self.players[ctx.guild.id].clear()
                 self.repeatO[ctx.guild.id] = False
+                self.repeatAll[ctx.guild.id] = False
                 return
         self.players[ctx.guild.id].clear()
         self.repeatO[ctx.guild.id] = False
+        self.repeatAll[ctx.guild.id] = False
         await voice.disconnect()
 
 
