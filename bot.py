@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 
-client = commands.Bot(command_prefix=commands.when_mentioned_or('.'), description="ShanerBot is too cool for any discord server.")
+client = commands.Bot(command_prefix=commands.when_mentioned_or('ur '), description="ShanerBot is too cool for any discord server.")
 for filename in os.listdir("./cogs"):  # loads all cogs
     if filename.endswith(".py"):
         client.load_extension(f"cogs.{filename[:-3]}")
