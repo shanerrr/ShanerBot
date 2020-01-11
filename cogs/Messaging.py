@@ -1,8 +1,10 @@
 import discord
 from discord.ext import commands
 from discord.utils import find
+from discord.utils import get
 import asyncio
 import random
+from .music import YTDLSource
 
 
 class Messaging(commands.Cog):
@@ -35,8 +37,8 @@ class Messaging(commands.Cog):
             replylist = ["what do you want man.", "?", "im busy right now actually doing something.", "yeah?", "how can i be an assistance to you?", "nope, don't like you."]
             await message.channel.send("``"+replylist[random.randint(0, 5)]+"``")
         if message.content.upper() == "KISS":
-            suslist = ["i want you to interlock lips with me", "omg kiss me omg", "pls kiss me man", "ur have succulent lips man", "no ty, fgt stay in ur lane", "why r u so hot", "no thanks man", "not in the mood right now"]
-            await message.channel.send("``"+suslist[random.randint(0, 7)]+"``")
+            suslist = ["i want you to interlock lips with me.", "omg kiss me omg.", "pls kiss me man.", "ur have succulent lips man.", "stay in ur lane b4 i get mad.", "why r u so hot.", "no thanks man.", "not in the mood right now."]
+            await message.channel.send("``"+suslist[random.randint(0, 6)]+"``")
         if message.content.upper() == "HEY SHANER":
             if str(message.author.id) == "168603442175148032":
                 await message.channel.send("``omg, yes master?``")
@@ -77,14 +79,17 @@ class Messaging(commands.Cog):
             byelist = ["Take care sweetie.", "Adios.", "omg before you go, take this 😘", "see ya l8ter alig8ter.",
                        "Goodbyes are not forever, are not the end; it simply means I'll miss you until we meet again.",
                        "Never say goodbye because goodbye means going away and going away means forgetting.",
-                       "Good friends never say goodbye. They simply say “See you soon."]
+                       "Good friends never say goodbye. They simply say “See you soon.”",
+                       "Though miles may lie between us, we are never far apart, for friendship doesn’t count miles, it’s measured by the heart.",
+                       "Nothing makes the earth seem so spacious as to have friends at a distance; they make the latitudes and longitudes."]
             if str(message.author.id) == "234743458961555459":
-                await message.channel.send("``"+"Jer, "+byelist[random.randint(0, 6)]+"``")
+                await message.channel.send("``"+"Jer, "+byelist[random.randint(0, 8)]+"``")
                 return
             if str(message.author.id) == "168603442175148032":
-                await message.channel.send("``"+"Shan, "+byelist[random.randint(0, 6)]+"``")
+                await message.channel.send("``"+"Shan, "+byelist[random.randint(0, 8)]+"``")
                 return
-            await message.channel.send(f"``{byelist[random.randint(0, 6)]}``")
+            await message.channel.send(f"``{byelist[random.randint(0, 8)]}``")
+
 
     @commands.command(pass_context=True)
     async def help(self, ctx):

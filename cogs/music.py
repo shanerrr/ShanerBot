@@ -8,6 +8,7 @@ import asyncio
 import html
 from async_timeout import timeout
 from collections import defaultdict
+import isodate
 
 youtube_dl.utils.bug_reports_message = lambda: ''
 ytdl_format_options = {
@@ -496,6 +497,7 @@ class Music(commands.Cog):
 
             searchlist = []
             urllist = []
+            durlist = []
 
             req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=10)
             searchres = req.execute()
@@ -503,23 +505,31 @@ class Music(commands.Cog):
                 for items in searchres['items']:
                     searchlist.append(html.unescape(items['snippet']))
                     urllist.append(items['id']['videoId'])
+                durreqs = self.youtube.videos().list(part='contentDetails', id=f'{", ".join(urllist)}')
+                durreq = durreqs.execute()
+                for itemsD in durreq['items']:
+                    durlist.append(itemsD['contentDetails']['duration'])
             else:
                 req = self.youtube.search().list(q="video|"+song_search, part='snippet', type='video', maxResults=10) #ensures we always get 10 results but videos  may be more general now
                 searchres = req.execute()
                 for items in searchres['items']:
                     searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
+                durreqs = self.youtube.videos().list(part='contentDetails', id=f'{", ".join(urllist)}')
+                durreq = durreqs.execute()
+                for itemsD in durreq['items']:
+                    durlist.append(itemsD['contentDetails']['duration'])
             try:
-                embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title'])
-                                                                               + "\n**[2]:** "+html.unescape(searchlist[1]['title'])
-                                                                               + "\n**[3]:** "+html.unescape(searchlist[2]['title'])
-                                                                               + "\n**[4]:** "+html.unescape(searchlist[3]['title'])
-                                                                               + "\n**[5]:** "+html.unescape(searchlist[4]['title'])
-                                                                               + "\n**[6]:** "+html.unescape(searchlist[5]['title'])
-                                                                               + "\n**[7]:** "+html.unescape(searchlist[6]['title'])
-                                                                               + "\n**[8]:** "+html.unescape(searchlist[7]['title'])
-                                                                               + "\n**[9]:** "+html.unescape(searchlist[8]['title'])
-                                                                               + "\n**[10]:** "+html.unescape(searchlist[9]['title'])
+                embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[0]).total_seconds())))}]**"
+                                                                               + "\n**[2]:** "+html.unescape(searchlist[1]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[1]).total_seconds())))}]**"
+                                                                               + "\n**[3]:** "+html.unescape(searchlist[2]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[2]).total_seconds())))}]**"
+                                                                               + "\n**[4]:** "+html.unescape(searchlist[3]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[3]).total_seconds())))}]**"
+                                                                               + "\n**[5]:** "+html.unescape(searchlist[4]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[4]).total_seconds())))}]**"
+                                                                               + "\n**[6]:** "+html.unescape(searchlist[5]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[5]).total_seconds())))}]**"
+                                                                               + "\n**[7]:** "+html.unescape(searchlist[6]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[6]).total_seconds())))}]**"
+                                                                               + "\n**[8]:** "+html.unescape(searchlist[7]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[7]).total_seconds())))}]**"
+                                                                               + "\n**[9]:** "+html.unescape(searchlist[8]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[8]).total_seconds())))}]**"
+                                                                               + "\n**[10]:** "+html.unescape(searchlist[9]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[9]).total_seconds())))}]**"
                                       , colour=discord.Color.dark_magenta())
             except:
                 await ctx.send("``idk, couldn't find anything.``")
@@ -604,6 +614,7 @@ class Music(commands.Cog):
 
             searchlist = [] #has all the results
             urllist = [] #for video id for player
+            durlist = []
 
             req = self.youtube.search().list(q=song_search, part='snippet', type='video', maxResults=10)
             searchres = req.execute()
@@ -611,23 +622,31 @@ class Music(commands.Cog):
                 for items in searchres['items']:
                     searchlist.append(html.unescape(items['snippet']))
                     urllist.append(items['id']['videoId'])
+                durreqs = self.youtube.videos().list(part='contentDetails', id=f'{", ".join(urllist)}')
+                durreq = durreqs.execute()
+                for itemsD in durreq['items']:
+                    durlist.append(itemsD['contentDetails']['duration'])
             else:
                 req = self.youtube.search().list(q="video|"+song_search, part='snippet', type='video', maxResults=10) #ensures we always get 10 results but videos  may be more general now
                 searchres = req.execute()
                 for items in searchres['items']:
                     searchlist.append(items['snippet'])
                     urllist.append(items['id']['videoId'])
+                durreqs = self.youtube.videos().list(part='contentDetails', id=f'{", ".join(urllist)}')
+                durreq = durreqs.execute()
+                for itemsD in durreq['items']:
+                    durlist.append(itemsD['contentDetails']['duration'])
             try:
-                embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title'])
-                                                                               + "\n**[2]:** "+html.unescape(searchlist[1]['title'])
-                                                                               + "\n**[3]:** "+html.unescape(searchlist[2]['title'])
-                                                                               + "\n**[4]:** "+html.unescape(searchlist[3]['title'])
-                                                                               + "\n**[5]:** "+html.unescape(searchlist[4]['title'])
-                                                                               + "\n**[6]:** "+html.unescape(searchlist[5]['title'])
-                                                                               + "\n**[7]:** "+html.unescape(searchlist[6]['title'])
-                                                                               + "\n**[8]:** "+html.unescape(searchlist[7]['title'])
-                                                                               + "\n**[9]:** "+html.unescape(searchlist[8]['title'])
-                                                                               + "\n**[10]:** "+html.unescape(searchlist[9]['title'])
+                embed = discord.Embed(title="**Search Results:**", description="**[1]:** "+html.unescape(searchlist[0]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[0]).total_seconds())))}]**"
+                                                                               + "\n**[2]:** "+html.unescape(searchlist[1]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[1]).total_seconds())))}]**"
+                                                                               + "\n**[3]:** "+html.unescape(searchlist[2]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[2]).total_seconds())))}]**"
+                                                                               + "\n**[4]:** "+html.unescape(searchlist[3]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[3]).total_seconds())))}]**"
+                                                                               + "\n**[5]:** "+html.unescape(searchlist[4]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[4]).total_seconds())))}]**"
+                                                                               + "\n**[6]:** "+html.unescape(searchlist[5]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[5]).total_seconds())))}]**"
+                                                                               + "\n**[7]:** "+html.unescape(searchlist[6]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[6]).total_seconds())))}]**"
+                                                                               + "\n**[8]:** "+html.unescape(searchlist[7]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[7]).total_seconds())))}]**"
+                                                                               + "\n**[9]:** "+html.unescape(searchlist[8]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[8]).total_seconds())))}]**"
+                                                                               + "\n**[10]:** "+html.unescape(searchlist[9]['title']) + f" - **[{str(datetime.timedelta(seconds=round(isodate.parse_duration(durlist[9]).total_seconds())))}]**"
                                       , colour=discord.Color.dark_magenta())
             except:
                 await ctx.send("``idk, couldn't find anything.``")
@@ -721,9 +740,67 @@ class Music(commands.Cog):
                 await ctx.send("⏮"+f" ``{self.players[ctx.guild.id][-1].title}.``")
                 voice.stop()
             else:
-                await ctx.send("``no song to skip man.......``")
+                await ctx.send("``no song to restart man.......``")
         else:
             await ctx.send("``r u stupid? im not even in a voice channel.``")
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if "its time" in message.content.lower():
+            if message.author.bot:
+                return
+            if (str(message.author.id) != "234743458961555459") and (str(message.author.id) != "168603442175148032"):
+                return
+            voice = get(self.client.voice_clients, guild=message.channel.guild)
+            if voice:
+                async with message.channel.typing():
+                    await asyncio.sleep(1)
+                await message.channel.send("``its time?``")
+                async with message.channel.typing():
+                    await asyncio.sleep(1)
+                    if voice.is_playing():
+                        voice.stop()
+                await message.channel.send("``alright guys, gotcha.``")
+                async with message.channel.typing():
+                    player = await YTDLSource.from_url(message.channel,
+                                                       f"https://www.youtube.com/watch?v=JRXzKet85KI",
+                                                       loop=self.client.loop, stream=True)
+                    self.players[message.channel.guild.id].insert(0, player)
+                    voice.play(player, after=lambda e: check_queue())
+                    await asyncio.sleep(2)
+                await message.channel.send("``Take it easy guys :(``")
+            else:
+                await message.channel.send("``i dont think its time.``")
+                return
+
+            def check_queue():
+                if self.players[message.channel.guild.id]:
+                    voice = get(self.client.voice_clients, guild=message.channel.guild)
+                    if self.restart[message.channel.guild.id]:
+                        voice.play(discord.FFmpegPCMAudio(self.players[message.channel.guild.id][-1].url, **ffmpeg_options),
+                                   after=lambda e: check_queue())
+                        voice.source = discord.PCMVolumeTransformer(voice.source)
+                        voice.source.volume = self.volume[message.channel.guild.id]
+                        self.restart[message.channel.guild.id] = False
+                    elif self.repeatO[message.channel.guild.id]:
+                        voice.play(discord.FFmpegPCMAudio(self.players[message.channel.guild.id][-1].url, **ffmpeg_options),
+                                   after=lambda e: check_queue())
+                        voice.source = discord.PCMVolumeTransformer(voice.source)
+                        voice.source.volume = self.volume[message.channel.guild.id]
+                    elif self.repeatAll[message.channel.guild.id]:
+                        if len(self.players[message.channel.guild.id]) == 1:
+                            voice.play(discord.FFmpegPCMAudio(self.players[message.channel.guild.id][-1].url, **ffmpeg_options),
+                                       after=lambda e: check_queue())
+                        else:
+                            songreinsert = self.players[message.channel.guild.id].pop()
+                            voice.play(self.players[message.channel.guild.id][-1], after=lambda e: check_queue())
+                            self.players[message.channel.guild.id].insert(0, songreinsert)
+                    else:
+                        self.players[message.channel.guild.id].pop()
+                        player = self.players[message.channel.guild.id][-1]
+                        voice.play(player, after=lambda e: check_queue())
+                else:
+                    return
 
     @play.before_invoke
     @search.before_invoke
@@ -780,7 +857,6 @@ class Music(commands.Cog):
         self.repeatO[ctx.guild.id] = False
         self.repeatAll[ctx.guild.id] = False
         await voice.disconnect()
-
 
 def setup(client):
     client.add_cog(Music(client))
